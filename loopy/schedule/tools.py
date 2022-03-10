@@ -84,6 +84,10 @@ if TYPE_CHECKING:
     from loopy.schedule import ScheduleItem
 
 
+from loopy.kernel import LoopKernel
+from loopy.tools import Tree
+
+
 # {{{ block boundary finder
 
 def get_block_boundaries(schedule: Sequence[ScheduleItem]) -> Mapping[int, int]:
@@ -1094,6 +1098,145 @@ def get_loop_tree(kernel: LoopKernel) -> LoopTree:
                            for insn in kernel.instructions),
                           emptyset)
     loop_inames = loop_inames - _get_parallel_inames(kernel)
+
+    for dom in kernel.domains:
+        for outer_iname in set(dom.get_var_names(dim_type.param)):
+            if outer_iname not in loop_inames:
+                continue
+
+            for inner_iname in dom.get_var_names(dim_type.set):
+                if inner_iname not in loop_inames:
+                    continue
+
+                # either outer_iname and inner_iname should belong to the same
+                # loop nest level or outer should be strictly outside inner
+                # iname
+                inner_iname_nest = iname_to_tree_node_id[inner_iname]
+                outer_iname_nest = iname_to_tree_node_id[outer_iname]
+
+                if inner_iname_nest == outer_iname_nest:
+                    strict_loop_priorities |= {(outer_iname, inner_iname)}
+                else:
+                    ancestors_of_inner_iname = tree.ancestors(inner_iname_nest)
+                    if outer_iname_nest not in ancestors_of_inner_iname:
+                        raise LoopyError(f"Loop '{outer_iname}' cannot be nested"
+                                         f" outside '{inner_iname}'.")
+
+    # }}}
+
+    return _order_loop_nests(tree,
+                             strict_loop_priorities,
+                             kernel.loop_priority,
+                             iname_to_tree_node_id)
+
+
+def _pull_out_loop_nest(tree, loop_nests, inames_to_pull_out):
+    """
+    Returns a copy of *tree* that realizes *inames_to_pull_out* as loop
+    nesting.
+
+    :arg tree: A :class:`loopy.tools.Tree`, where each node is
+        :class:`frozenset` of inames representing a loop nest. For example a
+        tree might look like:
+
+    :arg loop_nests: A collection of nodes in *tree* that cover
+        *inames_to_pull_out*.
+
+    :returns: a :class:`tuple` ``(new_tree, outer_loop_nest, inner_loop_nest)``,
+        where outer_loop_nest is the identifier for the new outer and inner
+        loop nests so that *inames_to_pull_out* is a valid nesting.
+
+    .. note::
+
+        We could compute *loop_nests* within this routine's implementation, but
+        computing would be expensive and hence we ask the caller for this info.
+
+    Example::
+       *tree*: frozenset()
+               └── frozenset({'j', 'i'})
+                   └── frozenset({'k', 'l'})
+
+       *inames_to_pull_out*: frozenset({'k', 'i', 'j'})
+       *loop_nests*: {frozenset({'j', 'i'}), frozenset({'k', 'l'})}
+
+       Returns:
+
+       *new_tree*: frozenset()
+                   └── frozenset({'j', 'i'})
+                       └── frozenset({'k'})
+                           └── frozenset({'l'})
+
+       *outer_loop_nest*: frozenset({'k'})
+       *inner_loop_nest*: frozenset({'l'})
+    """
+    assert all(isinstance(loop_nest, frozenset) for loop_nest in loop_nests)
+    assert inames_to_pull_out <= reduce(frozenset.union, loop_nests, frozenset())
+
+    # {{{ sanity check to ensure the loop nest *inames_to_pull_out* is possible
+
+    loop_nests = sorted(loop_nests, key=lambda nest: tree.depth(nest))
+
+    for outer, inner in zip(loop_nests[:-1], loop_nests[1:]):
+        if outer != tree.parent(inner):
+            raise LoopyError(f"Cannot schedule loop nest {inames_to_pull_out} "
+                             f" in the nesting tree:\n{tree}")
+
+    assert tree.depth(loop_nests[0]) == 0
+
+    # }}}
+
+    innermost_loop_nest = loop_nests[-1]
+    new_outer_loop_nest = inames_to_pull_out - reduce(frozenset.union,
+                                                      loop_nests[:-1],
+                                                      frozenset())
+    new_inner_loop_nest = innermost_loop_nest - inames_to_pull_out
+
+    if new_outer_loop_nest == innermost_loop_nest:
+        # such a loop nesting already exists => do nothing
+        return tree, new_outer_loop_nest, None
+
+    # add the outer loop to our loop nest tree
+    tree = tree.add_node(new_outer_loop_nest,
+                         parent=tree.parent(innermost_loop_nest))
+
+    # rename the old loop to the inner loop
+    tree = tree.rename_node(innermost_loop_nest,
+                            new_id=new_inner_loop_nest)
+
+    # set the parent of inner loop to be the outer loop
+    tree = tree.move_node(new_inner_loop_nest, new_parent=new_outer_loop_nest)
+
+    return tree, new_outer_loop_nest, new_inner_loop_nest
+
+
+def get_loop_nest_tree(kernel):
+    """
+    Returns ```tree``` (an instance of :class:`Tree`) representing the loop
+    nesting for *kernel*. Each node of ``tree`` is an instance of :class:`str`
+    corresponding to the inames of *kernel* that are realized as concrete
+    ``for-loops``. A parent node in `tree` is always nested outside all its
+    children.
+
+    .. note::
+
+        Multiple loop nestings might exist for *kernel*, but this routine returns
+        one valid loop nesting.
+    """
+    from islpy import dim_type
+
+    tree = _get_partial_loop_nest_tree(kernel)
+    iname_to_tree_node_id = (
+        _get_iname_to_tree_node_id_from_partial_loop_nest_tree(tree))
+
+    strict_loop_priorities = frozenset()
+
+    # {{{ impose constraints by the domain tree
+
+    loop_inames = (reduce(frozenset.union,
+                          (insn.within_inames
+                           for insn in kernel.instructions),
+                          frozenset())
+                   - _get_parallel_inames(kernel))
 
     for dom in kernel.domains:
         for outer_iname in set(dom.get_var_names(dim_type.param)):
