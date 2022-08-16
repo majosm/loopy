@@ -202,6 +202,7 @@ from loopy.transform.privatize import (
     unprivatize_temporaries_with_inames,
 )
 from loopy.transform.realize_reduction import realize_reduction
+from loopy.transform.reindex import reindex_temporary_using_seghir_loechner_scheme
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.subst import (
     assignment_to_subst,
@@ -370,6 +371,7 @@ __all__ = [
     "register_preamble_generators",
     "register_reduction_parser",
     "register_symbol_manglers",
+    "reindex_temporary_using_seghir_loechner_scheme",
     "remove_inames_from_insn",
     "remove_instructions",
     "remove_predicates_from_insn",
