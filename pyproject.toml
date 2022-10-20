@@ -172,6 +172,7 @@ module = [
     "mako.*",
     "ply.*",
     "pyopencl.*",
+    "pycuda.*",
 ]
 ignore_missing_imports = true
 

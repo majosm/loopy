@@ -116,6 +116,7 @@ from loopy.target.cuda import CudaTarget
 from loopy.target.execution import ExecutorBase
 from loopy.target.ispc import ISPCTarget
 from loopy.target.opencl import OpenCLTarget
+from loopy.target.pycuda import PyCudaTarget, PyCudaWithPackedArgsTarget
 from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.tools import Optional, clear_in_mem_caches, memoize_on_disk, t_unit_to_python
 from loopy.transform.add_barrier import add_barrier
@@ -217,7 +218,6 @@ from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible, to_loopy_t
 from loopy.typing import auto
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
-
 __all__ = [
     "MOST_RECENT_LANGUAGE_VERSION",
     "VERSION",
@@ -270,6 +270,8 @@ __all__ = [
     "Options",
     "OrderedAtomic",
     "PreambleInfo",
+    "PyCudaTarget",
+    "PyCudaWithPackedArgsTarget", 
     "PyOpenCLTarget",
     "Reduction",
     "ScalarCallable",
@@ -409,7 +411,6 @@ __all__ = [
     "unprivatize_temporaries_with_inames",
     "untag_inames",
     ]
-
 
 try:
     import loopy.relations as relations
