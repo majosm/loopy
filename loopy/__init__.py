@@ -203,6 +203,9 @@ from loopy.transform.privatize import (
     unprivatize_temporaries_with_inames,
 )
 from loopy.transform.realize_reduction import realize_reduction
+from loopy.transform.reduction import (
+    hoist_invariant_multiplicative_terms_in_sum_reduction,
+    extract_multiplicative_terms_in_sum_reduction_as_subst)
 from loopy.transform.reindex import reindex_temporary_using_seghir_loechner_scheme
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.subst import (
@@ -314,6 +317,7 @@ __all__ = [
     "concatenate_arrays",
     "duplicate_inames",
     "expand_subst",
+    "extract_multiplicative_terms_in_sum_reduction_as_subst",
     "extract_subst",
     "find_instructions",
     "find_most_recent_global_barrier",
@@ -344,6 +348,7 @@ __all__ = [
     "get_subkernels",
     "get_synchronization_map",
     "has_schedulable_iname_nesting",
+    "hoist_invariant_multiplicative_terms_in_sum_reduction",
     "infer_arg_descr",
     "infer_unknown_types",
     "inline_callable_kernel",
