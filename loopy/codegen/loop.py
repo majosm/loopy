@@ -31,6 +31,7 @@ from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.codegen.control import build_loop_nest
 from loopy.codegen.result import merge_codegen_results
 from loopy.diagnostic import LoopyError, warn
+from loopy.kernel import LoopKernel
 from loopy.symbolic import flatten
 
 
@@ -351,6 +352,16 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
 # {{{ sequential loop
 
+def _get_intersecting_inames(kernel: LoopKernel, iname: str) -> frozenset[str]:
+    from functools import reduce
+    return reduce(frozenset.union,
+                  ((kernel.id_to_insn[insn].within_inames
+                    | kernel.id_to_insn[insn].reduction_inames()
+                    | kernel.id_to_insn[insn].sub_array_ref_inames())
+                   for insn in kernel.iname_to_insns()[iname]),
+                  frozenset())
+
+
 def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
     kernel = codegen_state.kernel
 
@@ -364,6 +375,9 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
     # Note: this does not include loop_iname itself!
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index,
             codegen_state.codegen_cache_manager)
+
+    # get rid of disjoint loop nests, see <www.github.com/inducer/loopy/issues/724>
+    usable_inames = usable_inames & _get_intersecting_inames(kernel, loop_iname)
 
     domain = kernel.get_inames_domain(loop_iname)
 
