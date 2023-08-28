@@ -406,20 +406,39 @@ def _build_ldg(kernel: LoopKernel,
     *candidates*. Invoked as a helper function in
     :func:`get_kennedy_unweighted_fusion_candidates`.
     """
+    import time
 
     from pytools.graph import compute_topological_order
 
+    ts = time.time()
+
     loop_nest_tree = _get_partial_loop_nest_tree_for_fusion(kernel)
+
+    te = time.time()
+    print(f"_build_ldg, loop nest tree: {te-ts}")
+
+    ts = time.time()
 
     non_candidate_loop_nests = {
         child_loop_nest
         for child_loop_nest in loop_nest_tree.children(outer_inames)
         if len(child_loop_nest & candidates) == 0}
 
+    te = time.time()
+    print(f"_build_ldg, non candidate loop nests: {te-ts}")
+
+    ts = time.time()
+
     insns = reduce(frozenset.intersection,
                    (frozenset(kernel.iname_to_insns()[iname])
                     for iname in outer_inames),
                    frozenset(kernel.id_to_insn))
+
+    te = time.time()
+    print(f"_build_ldg, insns: {te-ts}")
+
+    ts = time.time()
+
     predecessors = {}
     successors = {}
 
@@ -446,6 +465,11 @@ def _build_ldg(kernel: LoopKernel,
                         predecessors.setdefault(successor, set()).add(predecessor)
                         successors.setdefault(predecessor, set()).add(successor)
 
+    te = time.time()
+    print(f"_build_ldg, pred/succ: {te-ts}")
+
+    ts = time.time()
+
     predecessors, successors, infusible_edges = (
         _remove_non_candidate_pre_ldg_nodes(
             kernel,
@@ -456,6 +480,11 @@ def _build_ldg(kernel: LoopKernel,
             candidates))
     del predecessors
 
+    te = time.time()
+    print(f"_build_ldg, remove non-candidate pre-ldg nodes: {te-ts}")
+
+    ts = time.time()
+
     builder = LoopDependenceGraphBuilder.new(candidates)
 
     # Interpret the statement DAG as LDG
@@ -464,12 +493,22 @@ def _build_ldg(kernel: LoopKernel,
             builder.add_edge(pred, succ,
                              (pred, succ) in infusible_edges)
 
+    te = time.time()
+    print(f"_build_ldg, init builder: {te-ts}")
+
     # {{{ add infusible edges to the LDG depending on memory deps.
+
+    ts = time.time()
 
     all_candidate_insns = reduce(frozenset.union,
                                  (kernel.iname_to_insns()[iname]
                                   for iname in candidates),
                                  frozenset())
+
+    te = time.time()
+    print(f"_build_ldg, all candidate insns: {te-ts}")
+
+    ts = time.time()
 
     dep_inducing_vars = reduce(frozenset.union,
                                (frozenset(kernel
@@ -477,11 +516,22 @@ def _build_ldg(kernel: LoopKernel,
                                           .assignee_var_names())
                                 for insn in all_candidate_insns),
                                frozenset())
+
+    te = time.time()
+    print(f"_build_ldg, dep inducing vars: {te-ts}")
+
     wmap = kernel.writer_map()
     rmap = kernel.reader_map()
 
+    ts = time.time()
+
     topo_order = {el: i
                   for i, el in enumerate(compute_topological_order(successors))}
+
+    te = time.time()
+    print(f"_build_ldg, topo order: {te-ts}")
+
+    ts = time.time()
 
     for var in dep_inducing_vars:
         for writer_id in (wmap.get(var, frozenset())
@@ -512,6 +562,9 @@ def _build_ldg(kernel: LoopKernel,
 
                 builder.add_edge(pred_candidate, succ_candidate, is_infusible)
 
+    te = time.time()
+    print(f"_build_ldg, infusable edges: {te-ts}")
+
     # }}}
 
     return builder.done()
@@ -523,8 +576,17 @@ def _fuse_sequential_loops_with_outer_loops(kernel: LoopKernel,
                                             candidates: FrozenSet[str],
                                             outer_inames: FrozenSet[str],
                                             name_gen, prefix, force_infusible):
+    import time
+
+    ts = time.time()
+
     from collections import deque
     ldg = _build_ldg(kernel, candidates, outer_inames)
+
+    te = time.time()
+    print(f"_fuse_sequential_loops..., build ldg: {te-ts}")
+
+    ts = time.time()
 
     fused_chunks = {}
 
@@ -573,6 +635,9 @@ def _fuse_sequential_loops_with_outer_loops(kernel: LoopKernel,
 
         ldg = ldg.remove_nodes(loops_to_be_fused)
         fused_chunks[name_gen(prefix)] = loops_to_be_fused
+
+    te = time.time()
+    print(f"_fuse_sequential_loops..., fuse loops: {te-ts}")
 
     assert reduce(frozenset.union, fused_chunks.values(), frozenset()) == candidates
     assert sum(len(val) for val in fused_chunks.values()) == len(candidates)
@@ -666,9 +731,22 @@ def _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree):
 
 
 def _get_partial_loop_nest_tree_for_fusion(kernel):
+    import time
+    ts = time.time()
+
     from loopy.schedule.tools import _get_partial_loop_nest_tree
     tree = _get_partial_loop_nest_tree(kernel)
+
+    te = time.time()
+    print(f"_get_partial_...for_fusion, tree: {te-ts}")
+
+    ts = time.time()
+
     tree = _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree)
+
+    te = time.time()
+    print(f"_get_partial_...for_fusion, add reduction loops: {te-ts}")
+
     return tree
 
 
@@ -694,6 +772,8 @@ def get_kennedy_unweighted_fusion_candidates(
     assert not isinstance(candidates, str)
     assert isinstance(candidates, Collection)
     assert isinstance(kernel, LoopKernel)
+
+    import time
 
     candidates = frozenset(candidates)
     vng = kernel.get_var_name_generator()
@@ -722,6 +802,8 @@ def get_kennedy_unweighted_fusion_candidates(
 
     # {{{ handle concurrent inames
 
+    ts = time.time()
+
     # filter out concurrent loops.
     all_concurrent_tags = reduce(frozenset.union,
                                  (kernel.inames[iname].tags_of_type(ConcurrentTag)
@@ -731,6 +813,11 @@ def get_kennedy_unweighted_fusion_candidates(
     concurrent_tag_to_inames = {tag: set()
                                 for tag in all_concurrent_tags}
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., concurrent 1: {te-ts}")
+
+    ts = time.time()
+
     for iname in candidates:
         if kernel.inames[iname].tags_of_type(ConcurrentTag):
             # since ConcurrentTag is a UniqueTag there must be exactly one of
@@ -738,18 +825,38 @@ def get_kennedy_unweighted_fusion_candidates(
             tag, = kernel.tags_of_type(ConcurrentTag)
             concurrent_tag_to_inames[tag].add(iname)
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., concurrent 2: {te-ts}")
+
+    ts = time.time()
+
     for inames in concurrent_tag_to_inames.values():
         fused_chunks[vng(prefix)] = inames
         candidates = candidates - inames
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., concurrent 3: {te-ts}")
+
     # }}}
 
+    ts = time.time()
+
     tree = _get_partial_loop_nest_tree_for_fusion(kernel)
+
+    te = time.time()
+    print(f"get_kennedy_unweighted..., tree: {te-ts}")
+
+    ts = time.time()
 
     iname_to_tree_node_id = (
         _get_iname_to_tree_node_id_from_partial_loop_nest_tree(tree))
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., iname to tree node id: {te-ts}")
+
     # {{{ sanitary checks
+
+    ts = time.time()
 
     _nest_tree_id_to_candidate = {}
 
@@ -763,6 +870,11 @@ def get_kennedy_unweighted_fusion_candidates(
                              "cannot fused be fused as they can be nested "
                              "within one another.")
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., sanity 1: {te-ts}")
+
+    ts = time.time()
+
     for iname in candidates:
         outer_loops = reduce(frozenset.union,
                              tree.ancestors(iname_to_tree_node_id[iname]),
@@ -774,7 +886,12 @@ def get_kennedy_unweighted_fusion_candidates(
 
     del _nest_tree_id_to_candidate
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., sanity 2: {te-ts}")
+
     # }}}
+
+    ts = time.time()
 
     # just_outer_loop_nest: mapping from loop nest to the candidates they
     # contain
@@ -784,6 +901,11 @@ def get_kennedy_unweighted_fusion_candidates(
     for iname in candidates:
         just_outer_loop_nest[tree.parent(iname_to_tree_node_id[iname])].add(iname)
 
+    te = time.time()
+    print(f"get_kennedy_unweighted..., just outer: {te-ts}")
+
+    ts = time.time()
+
     for outer_inames, inames in just_outer_loop_nest.items():
         fused_chunks.update(_fuse_sequential_loops_with_outer_loops(kernel,
                                                                     inames,
@@ -792,6 +914,9 @@ def get_kennedy_unweighted_fusion_candidates(
                                                                     prefix,
                                                                     force_infusible
                                                                     ))
+
+    te = time.time()
+    print(f"get_kennedy_unweighted..., fuse sequential: {te-ts}")
 
     return fused_chunks
 
