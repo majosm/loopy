@@ -238,7 +238,8 @@ class ArrayToBufferMap:
         non1_storage_shape = []
 
         for saxis_len in storage_shape:
-            has_length_non1 = saxis_len != 1
+            # has_length_non1 = saxis_len != 1
+            has_length_non1 = True
 
             non1_storage_axis_flags.append(has_length_non1)
 
@@ -279,12 +280,12 @@ class ArrayToBufferMap:
         from loopy.symbolic import aff_from_expr
         for saxis, bi, s in zip(storage_axis_names, storage_base_indices,
                 storage_shape):
-            if s != 1:
-                cns = isl.Constraint.equality_from_aff(
-                        aff_from_expr(aug_domain.get_space(),
-                            var(saxis) - (var(saxis+"'") - bi)))
+            # if s != 1:
+            cns = isl.Constraint.equality_from_aff(
+                    aff_from_expr(aug_domain.get_space(),
+                        var(saxis) - (var(saxis+"'") - bi)))
 
-                aug_domain = aug_domain.add_constraint(cns)
+            aug_domain = aug_domain.add_constraint(cns)
 
         # }}}
 
