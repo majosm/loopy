@@ -771,7 +771,16 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         # }}}
 
-        abm = ArrayToBufferMap(kernel, domch.domain, sweep_inames,
+        # Don't give ArrayToBufferMap too much information about non-swept
+        # inames, otherwise it may optimize them out (e.g., length-1 loops).
+        # See https://github.com/inducer/loopy/issues/809
+        abm_domain = domch.domain
+        for iname in change_inames:
+            _, dim_idx = abm_domain.get_var_dict()[iname]
+            abm_domain = abm_domain.drop_constraints_involving_dims(
+                isl.dim_type.set, dim_idx, 1)
+
+        abm = ArrayToBufferMap(kernel, abm_domain, sweep_inames,
                 access_descriptors, len(storage_axis_names))
 
         non1_storage_axis_names = []
