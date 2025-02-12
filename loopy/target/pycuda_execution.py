@@ -24,8 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import (Sequence, Tuple, Union, Callable, Any, Optional,
-                    TYPE_CHECKING)
+from typing import (Sequence, Callable, Any, TYPE_CHECKING)
 from dataclasses import dataclass
 
 import numpy as np
@@ -35,7 +34,7 @@ from pytools import memoize_method
 from pytools.codegen import Indentation, CodeGenerator
 
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
 from loopy.translation_unit import TranslationUnit
@@ -112,7 +111,7 @@ class PyCudaExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Expression | tuple[Expression]], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for pycuda execution
@@ -288,7 +287,7 @@ class PyCudaKernelExecutor(KernelExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-                              arg_to_dtype: Optional[Map[str, LoopyType]] = None
+                              arg_to_dtype: Map[str, LoopyType] | None = None
                               ) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(self.entrypoint,
                                                                arg_to_dtype)

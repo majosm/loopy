@@ -28,8 +28,8 @@ THE SOFTWARE.
 
 
 import islpy as isl
-from typing import Union, Iterable, Tuple
-from loopy.typing import ExpressionT
+from typing import Iterable
+from loopy.typing import Expression
 from loopy.kernel import LoopKernel
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import CombineMapper
@@ -38,8 +38,8 @@ from loopy.kernel.instruction import (MultiAssignmentBase,
 from loopy.symbolic import RuleAwareIdentityMapper
 
 
-ISLMapT = Union[isl.BasicMap, isl.Map]
-ISLSetT = Union[isl.BasicSet, isl.Set]
+ISLMapT = isl.BasicMap | isl.Map
+ISLSetT = isl.BasicSet | isl.Set
 
 
 def _add_prime_to_dim_names(isl_map: ISLMapT,
@@ -69,7 +69,7 @@ def _add_prime_to_dim_names(isl_map: ISLMapT,
 
 
 def _get_seghir_loechner_reindexing_from_range(access_range: ISLSetT
-                                               ) -> Tuple[isl.PwQPolynomial,
+                                               ) -> tuple[isl.PwQPolynomial,
                                                           isl.PwQPolynomial]:
     """
     Returns ``(reindex_map, new_shape)``, where,
@@ -236,7 +236,7 @@ def reindex_temporary_using_seghir_loechner_scheme(kernel: LoopKernel,
         subst_kernel,
         frozenset([var_name]))
 
-    access_exprs: Tuple[ExpressionT, ...]
+    access_exprs: tuple[Expression, ...]
 
     for insn in subst_kernel.instructions:
         if var_name in insn.dependency_names():

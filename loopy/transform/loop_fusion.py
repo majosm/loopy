@@ -603,16 +603,16 @@ class ReductionLoopInserter(RuleAwareIdentityMapper):
 
         # {{{ verbatim copied from loopy/schedule/tools.py
 
-        from loopy.schedule.tools import (_pull_out_loop_nest,
+        from loopy.schedule.tools import (separate_loop_nest,
                                           _add_inner_loops)
 
         all_nests = {self.iname_to_tree_node_id[iname]
                      for iname in seen_inames}
 
-        self.tree, outer_loop, inner_loop = _pull_out_loop_nest(self.tree,
-                                                                (all_nests
-                                                                 | {frozenset()}),
-                                                                seen_inames)
+        self.tree, outer_loop, inner_loop = separate_loop_nest(self.tree,
+                                                               (all_nests
+                                                                | {frozenset()}),
+                                                               seen_inames)
         if not_seen_inames:
             # make '_not_seen_inames' nest inside the seen ones.
             # example: if there is already a loop nesting "i,j,k"

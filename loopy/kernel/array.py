@@ -1210,7 +1210,7 @@ def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
             return var(ary.offset) + sub
         else:
             # assume it's an expression
-            # FIXME: mypy can't figure out that ExpressionT + ExpressionT works
+            # FIXME: mypy can't figure out that Expression + Expression works
             return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]
     else:
         return sub
