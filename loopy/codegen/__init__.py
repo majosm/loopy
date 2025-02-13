@@ -578,6 +578,9 @@ def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
         from loopy.preprocess import preprocess_program
         t_unit = preprocess_program(t_unit)
 
+    from loopy.transform.data import allocate_temporaries_for_base_storage
+    t_unit = allocate_temporaries_for_base_storage(t_unit)
+
     from loopy.type_inference import infer_unknown_types
     t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
