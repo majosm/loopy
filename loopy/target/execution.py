@@ -51,7 +51,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.kernel import KernelState, LoopKernel
 from loopy.kernel.data import ArrayArg, _ArraySeparationInfo, auto
-from loopy.tools import LoopyKeyBuilder, caches
+from loopy.tools import CACHING_ENABLED, LoopyKeyBuilder, caches
 from loopy.types import LoopyType, NumpyType
 from loopy.typing import Expression, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
@@ -734,28 +734,26 @@ class ExecutionWrapperGeneratorBase(ABC):
 # }}}
 
 
-typed_and_scheduled_cache: WriteOncePersistentDict[
-    tuple[str, TranslationUnit, Mapping[str, LoopyType] | None],
-    TranslationUnit
-] = WriteOncePersistentDict(
-        "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder(),
-        safe_sync=False)
+if CACHING_ENABLED:
+    typed_and_scheduled_cache: WriteOncePersistentDict[
+        tuple[str, TranslationUnit, Mapping[str, LoopyType] | None],
+        TranslationUnit
+    ] = WriteOncePersistentDict(
+            "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
+            key_builder=LoopyKeyBuilder(),
+            safe_sync=False)
 
+    caches.append(typed_and_scheduled_cache)
 
-caches.append(typed_and_scheduled_cache)
+    invoker_cache: WriteOncePersistentDict[
+        tuple[str, TranslationUnit, str],
+        str
+    ] = WriteOncePersistentDict(
+            "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
+            key_builder=LoopyKeyBuilder(),
+            safe_sync=False)
 
-
-invoker_cache: WriteOncePersistentDict[
-    tuple[str, TranslationUnit, str],
-    str
-] = WriteOncePersistentDict(
-        "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder(),
-        safe_sync=False)
-
-
-caches.append(invoker_cache)
+    caches.append(invoker_cache)
 
 
 # {{{ kernel executor
@@ -856,8 +854,6 @@ class ExecutorBase:
     def get_typed_and_scheduled_translation_unit(
             self, arg_to_dtype: constantdict[str, LoopyType] | None
             ) -> TranslationUnit:
-        from loopy import CACHING_ENABLED
-
         cache_key = (type(self).__name__, self.t_unit, arg_to_dtype)
 
         if CACHING_ENABLED:
@@ -915,8 +911,6 @@ class ExecutorBase:
         raise NotImplementedError()
 
     def get_invoker(self, t_unit, entrypoint, *args):
-        from loopy import CACHING_ENABLED
-
         cache_key = (self.__class__.__name__, (t_unit, entrypoint))
 
         if CACHING_ENABLED:

@@ -48,7 +48,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.diagnostic import LoopyError, warn
 from loopy.kernel.function_interface import CallableKernel
 from loopy.symbolic import CombineMapper
-from loopy.tools import LoopyKeyBuilder, caches
+from loopy.tools import CACHING_ENABLED, LoopyKeyBuilder, caches
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -284,16 +284,16 @@ class CodeGenerationState:
 # }}}
 
 
-code_gen_cache: WriteOncePersistentDict[
-    TranslationUnit,
-    CodeGenerationResult
-] = WriteOncePersistentDict(
-         "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
-         key_builder=LoopyKeyBuilder(),
-         safe_sync=False)
+if CACHING_ENABLED:
+    code_gen_cache: WriteOncePersistentDict[
+        TranslationUnit,
+        CodeGenerationResult
+    ] = WriteOncePersistentDict(
+             "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
+             key_builder=LoopyKeyBuilder(),
+             safe_sync=False)
 
-
-caches.append(code_gen_cache)
+    caches.append(code_gen_cache)
 
 
 class InKernelCallablesCollector(CombineMapper):
@@ -550,7 +550,7 @@ class TranslationUnitCodeGenerationResult:
 def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
     # {{{ cache retrieval
 
-    from loopy import ABORT_ON_CACHE_MISS, CACHING_ENABLED
+    from loopy import ABORT_ON_CACHE_MISS
     from loopy.kernel import LoopKernel
     from loopy.translation_unit import make_program
 

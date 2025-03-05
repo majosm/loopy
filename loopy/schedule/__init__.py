@@ -41,7 +41,7 @@ from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
-from loopy.tools import LoopyKeyBuilder, caches
+from loopy.tools import CACHING_ENABLED, LoopyKeyBuilder, caches
 from loopy.typing import InameStr
 from loopy.version import DATA_MODEL_VERSION
 
@@ -2548,16 +2548,16 @@ def _generate_loop_schedules_inner(
 # }}}
 
 
-schedule_cache: WriteOncePersistentDict[
-        tuple[LoopKernel, CallablesTable],
-        LoopKernel
-] = WriteOncePersistentDict(
-        "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder(),
-        safe_sync=False)
+if CACHING_ENABLED:
+    schedule_cache: WriteOncePersistentDict[
+            tuple[LoopKernel, CallablesTable],
+            LoopKernel
+    ] = WriteOncePersistentDict(
+            "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
+            key_builder=LoopyKeyBuilder(),
+            safe_sync=False)
 
-
-caches.append(schedule_cache)
+    caches.append(schedule_cache)
 
 
 def _get_one_linearized_kernel_inner(
@@ -2579,8 +2579,6 @@ def _get_one_linearized_kernel_inner(
 def get_one_linearized_kernel(
             kernel: LoopKernel,
             callables_table: CallablesTable) -> LoopKernel:
-    from loopy import CACHING_ENABLED
-
     # must include *callables_table* within the cache key as the preschedule
     # checks depend on it.
     sched_cache_key = (kernel, callables_table)

@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import collections.abc as abc
 import logging
+import os
 from functools import cached_property
 from sys import intern
 from typing import FrozenSet, Generic, TypeVar, Iterator
@@ -34,7 +35,7 @@ import numpy as np
 from constantdict import constantdict
 
 import islpy as isl
-from pytools import ProcessLogger, memoize_method
+from pytools import ProcessLogger, memoize_method, strtobool
 from pytools.persistent_dict import (
     KeyBuilder as KeyBuilderBase,
     WriteOncePersistentDict,
@@ -830,6 +831,45 @@ def t_unit_to_python(t_unit, var_name="t_unit",
 
 # {{{ cache management
 
+# Caching is enabled by default, but can be disabled by setting
+# the environment variables LOOPY_NO_CACHE or CG_NO_CACHE to a
+# 'true' value.
+CACHING_ENABLED = (
+    not strtobool(os.environ.get("LOOPY_NO_CACHE", "false"))
+    and
+    not strtobool(os.environ.get("CG_NO_CACHE", "false")))
+
+
+ABORT_ON_CACHE_MISS = strtobool(os.environ.get("LOOPY_ABORT_ON_CACHE_MISS", "false"))
+
+
+def set_caching_enabled(flag):
+    """Set whether :mod:`loopy` is allowed to use disk caching for its various
+    code generation stages.
+    """
+    global CACHING_ENABLED
+    CACHING_ENABLED = flag
+
+
+class CacheMode:
+    """A context manager for setting whether :mod:`loopy` is allowed to use
+    disk caches.
+    """
+
+    def __init__(self, new_flag):
+        self.new_flag = new_flag
+
+    def __enter__(self):
+        global CACHING_ENABLED
+        self.previous_mode = CACHING_ENABLED
+        CACHING_ENABLED = self.new_flag
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global CACHING_ENABLED
+        CACHING_ENABLED = self.previous_mode
+        del self.previous_mode
+
+
 caches: list[WriteOncePersistentDict] = []
 
 
@@ -851,20 +891,19 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from loopy.translation_unit import TranslationUnit
     from loopy.version import DATA_MODEL_VERSION
 
-    transform_cache = WriteOncePersistentDict(
-        ("loopy-memoize-cache-"
-            f"{func.__name__}-"
-            f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
-            f"-v0-{DATA_MODEL_VERSION}"),
-        key_builder=key_builder_t(),
-        safe_sync=False)
+    if CACHING_ENABLED:
+        transform_cache = WriteOncePersistentDict(
+            ("loopy-memoize-cache-"
+                f"{func.__name__}-"
+                f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
+                f"-v0-{DATA_MODEL_VERSION}"),
+            key_builder=key_builder_t(),
+            safe_sync=False)
 
-    caches.append(transform_cache)
+        caches.append(transform_cache)
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from loopy import CACHING_ENABLED
-
         if (not CACHING_ENABLED
                 or kwargs.pop("_no_memoize_on_disk", False)):
             return func(*args, **kwargs)

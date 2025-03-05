@@ -118,7 +118,16 @@ from loopy.target.ispc import ISPCTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pycuda import PyCudaTarget, PyCudaWithPackedArgsTarget
 from loopy.target.pyopencl import PyOpenCLTarget
-from loopy.tools import Optional, clear_in_mem_caches, memoize_on_disk, t_unit_to_python
+from loopy.tools import (
+    ABORT_ON_CACHE_MISS,
+    CACHING_ENABLED,
+    CacheMode,
+    Optional,
+    clear_in_mem_caches,
+    memoize_on_disk,
+    set_caching_enabled,
+    t_unit_to_python,
+)
 from loopy.transform.add_barrier import add_barrier
 from loopy.transform.arithmetic import (
     collect_common_factors_on_increment,
@@ -224,6 +233,8 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
 
 __all__ = [
+    "ABORT_ON_CACHE_MISS",
+    "CACHING_ENABLED",
     "MOST_RECENT_LANGUAGE_VERSION",
     "VERSION",
     "ASTBuilderBase",
@@ -515,54 +526,6 @@ def register_symbol_manglers(kernel, manglers):
             new_manglers = (m, *new_manglers)
 
     return kernel.copy(symbol_manglers=new_manglers)
-
-# }}}
-
-
-# {{{ cache control
-
-import os
-
-from pytools import strtobool
-
-
-# Caching is enabled by default, but can be disabled by setting
-# the environment variables LOOPY_NO_CACHE or CG_NO_CACHE to a
-# 'true' value.
-CACHING_ENABLED = (
-    not strtobool(os.environ.get("LOOPY_NO_CACHE", "false"))
-    and
-    not strtobool(os.environ.get("CG_NO_CACHE", "false")))
-
-
-ABORT_ON_CACHE_MISS = strtobool(os.environ.get("LOOPY_ABORT_ON_CACHE_MISS", "false"))
-
-
-def set_caching_enabled(flag):
-    """Set whether :mod:`loopy` is allowed to use disk caching for its various
-    code generation stages.
-    """
-    global CACHING_ENABLED
-    CACHING_ENABLED = flag
-
-
-class CacheMode:
-    """A context manager for setting whether :mod:`loopy` is allowed to use
-    disk caches.
-    """
-
-    def __init__(self, new_flag):
-        self.new_flag = new_flag
-
-    def __enter__(self):
-        global CACHING_ENABLED
-        self.previous_mode = CACHING_ENABLED
-        CACHING_ENABLED = self.new_flag
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        global CACHING_ENABLED
-        CACHING_ENABLED = self.previous_mode
-        del self.previous_mode
 
 # }}}
 
