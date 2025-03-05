@@ -261,6 +261,7 @@ def _remove_non_candidate_pre_ldg_nodes(kernel,
             infusible_edges_in_statement_dag)
 
 
+@memoize_on_first_arg
 def _get_ldg_nodes_from_loopy_insn(kernel, insn, candidates, non_candidates,
                                    just_outer_loop_nest):
     """
@@ -398,6 +399,7 @@ def _compute_isinfusible_via_access_map(kernel,
     return result
 
 
+# @memoize_on_first_arg
 def _build_ldg(kernel: LoopKernel,
                candidates: FrozenSet[str],
                outer_inames: FrozenSet[str]):
@@ -411,10 +413,10 @@ def _build_ldg(kernel: LoopKernel,
 
     loop_nest_tree = _get_partial_loop_nest_tree_for_fusion(kernel)
 
-    non_candidate_loop_nests = {
+    non_candidate_loop_nests = frozenset({
         child_loop_nest
         for child_loop_nest in loop_nest_tree.children(outer_inames)
-        if len(child_loop_nest & candidates) == 0}
+        if len(child_loop_nest & candidates) == 0})
 
     insns = reduce(frozenset.intersection,
                    (frozenset(kernel.iname_to_insns()[iname])
@@ -524,6 +526,8 @@ def _fuse_sequential_loops_with_outer_loops(kernel: LoopKernel,
                                             outer_inames: FrozenSet[str],
                                             name_gen, prefix, force_infusible):
     from collections import deque
+    assert isinstance(candidates, frozenset)
+    assert isinstance(outer_inames, frozenset)
     ldg = _build_ldg(kernel, candidates, outer_inames)
 
     fused_chunks = {}
@@ -666,6 +670,7 @@ def _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree):
     return reduction_loop_inserter.tree
 
 
+@memoize_on_first_arg
 def _get_partial_loop_nest_tree_for_fusion(kernel):
     from loopy.schedule.tools import _get_partial_loop_nest_tree
     tree = _get_partial_loop_nest_tree(kernel)
@@ -789,7 +794,7 @@ def get_kennedy_unweighted_fusion_candidates(
 
     for outer_inames, inames in just_outer_loop_nest.items():
         fused_chunks.update(_fuse_sequential_loops_with_outer_loops(kernel,
-                                                                    inames,
+                                                                    frozenset(inames),
                                                                     outer_inames,
                                                                     vng,
                                                                     prefix,

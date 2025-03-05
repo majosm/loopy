@@ -2181,6 +2181,7 @@ def _union_amaps(amaps):
     return reduce(isl.Map.union, amaps[1:], amaps[0])
 
 
+@memoize_on_first_arg
 def get_insn_access_map(kernel, insn_id, var):
     from loopy.transform.subst import expand_subst
     from loopy.symbolic import get_access_map
