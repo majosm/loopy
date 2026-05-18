@@ -992,7 +992,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                    "True, "  # g_times_l
                    "True, "  # allow_empty_ndrange
                    ")"),
-            Assign("wait_for", "[_lpy_evt]"),
+            Line("queue.finish()"),
+            Assign("wait_for", "None"),
             Line(),
             Comment("}}}"),
             Line(),
