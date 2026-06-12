@@ -178,7 +178,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         gen.add_to_preamble("import pyopencl.array as _lpy_cl_array")
         gen.add_to_preamble("import pyopencl.tools as _lpy_cl_tools")
         gen.add_to_preamble("from struct import pack as _lpy_pack")
-        gen.add_to_preamble("import time as _lpy_time")
         from loopy.target.c.c_execution import DEF_EVEN_DIV_FUNCTION
         gen.add_to_preamble(DEF_EVEN_DIV_FUNCTION)
 
