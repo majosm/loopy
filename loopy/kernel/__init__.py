@@ -32,6 +32,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field, fields, replace
 from enum import IntEnum
 from functools import cached_property
@@ -54,6 +55,7 @@ from pytools import (
     UniqueNameGenerator,
     fset_union,
     generate_unique_names,
+    memoize_in,
     memoize_method,
     natsorted,
 )
@@ -81,7 +83,6 @@ if TYPE_CHECKING:
         Collection,
         Hashable,
         Mapping,
-        Sequence,
         Set as AbstractSet,
     )
 
@@ -118,6 +119,18 @@ class _BoundsRecord:
     lower_bound_pw_aff: nisl.PwAff
     upper_bound_pw_aff: nisl.PwAff
     size: nisl.PwAff
+
+
+# Domains wrapper for memoization purposes
+@dataclass(frozen=True)
+class _DomainSequence(Sequence[nisl.Set]):
+    _domains: Sequence[nisl.Set]
+
+    def __getitem__(self, index):
+        return self._domains[index]
+
+    def __len__(self):
+        return len(self._domains)
 
 
 @dataclass(frozen=True)
@@ -232,6 +245,11 @@ class LoopKernel(Taggable):
         import islpy as isl
         assert self.assumptions._obj.get_ctx() == isl.DEFAULT_CONTEXT
 
+        # FIXME: Might have to actually define __init__ so self.domains can be typed
+        # accurately
+        if not isinstance(self.domains, _DomainSequence):
+            object.__setattr__(self, "domains", _DomainSequence(self.domains))
+
     # {{{ symbol mangling
 
     def mangle_symbol(
@@ -331,7 +349,6 @@ class LoopKernel(Taggable):
 
     # {{{ domain wrangling
 
-    @memoize_method
     def parents_per_domain(self) -> Sequence[int | None]:
         """Return a list corresponding to self.domains (by index)
         containing domain indices which are nested around this
@@ -340,56 +357,59 @@ class LoopKernel(Taggable):
         Each domains nest list walks from the leaves of the nesting
         tree to the root.
         """
+        # FIXME: Not sure if I'm allowed to memoize onto an arbitrary Sequence type?
+        @memoize_in(self.domains, "parents_per_domain")
+        def inner() -> Sequence[int | None]:
+            # The stack of iname sets records which inames are active
+            # as we step through the linear list of domains. It also
+            # determines the granularity of inames to be popped/decactivated
+            # if we ascend a level.
 
-        # The stack of iname sets records which inames are active
-        # as we step through the linear list of domains. It also
-        # determines the granularity of inames to be popped/decactivated
-        # if we ascend a level.
+            iname_set_stack: list[set[str]] = []
+            result: list[int | None] = []
 
-        iname_set_stack: list[set[str]] = []
-        result: list[int | None] = []
+            from loopy.kernel.tools import is_domain_dependent_on_inames
 
-        from loopy.kernel.tools import is_domain_dependent_on_inames
+            for dom_idx, dom in enumerate(self.domains):
+                inames = dom.space.dim_names(DimType.out)
 
-        for dom_idx, dom in enumerate(self.domains):
-            inames = dom.space.dim_names(DimType.out)
+                # This next domain may be nested inside the previous domain.
+                # Or it may not, in which case we need to figure out how many
+                # levels of parents we need to discard in order to find the
+                # true parent.
 
-            # This next domain may be nested inside the previous domain.
-            # Or it may not, in which case we need to figure out how many
-            # levels of parents we need to discard in order to find the
-            # true parent.
-
-            discard_level_count = 0
-            while discard_level_count < len(iname_set_stack):
-                last_inames = (
-                        iname_set_stack[-1-discard_level_count])
-                if discard_level_count + 1 < len(iname_set_stack):
+                discard_level_count = 0
+                while discard_level_count < len(iname_set_stack):
                     last_inames = (
-                            last_inames - iname_set_stack[-2-discard_level_count])
+                            iname_set_stack[-1-discard_level_count])
+                    if discard_level_count + 1 < len(iname_set_stack):
+                        last_inames = (
+                                last_inames - iname_set_stack[-2-discard_level_count])
 
-                if is_domain_dependent_on_inames(self, dom_idx, last_inames):
-                    break
+                    if is_domain_dependent_on_inames(self, dom_idx, last_inames):
+                        break
 
-                discard_level_count += 1
+                    discard_level_count += 1
 
-            if discard_level_count:
-                iname_set_stack = iname_set_stack[:-discard_level_count]
+                if discard_level_count:
+                    iname_set_stack = iname_set_stack[:-discard_level_count]
 
-            parent = len(result) - 1 if result else None
+                parent = len(result) - 1 if result else None
 
-            for _i in range(discard_level_count):
-                assert parent is not None
-                parent = result[parent]
+                for _i in range(discard_level_count):
+                    assert parent is not None
+                    parent = result[parent]
 
-            # found this domain's parent
-            result.append(parent)
+                # found this domain's parent
+                result.append(parent)
 
-            parent_inames = iname_set_stack[-1] if iname_set_stack else set()
-            iname_set_stack.append(parent_inames | inames)
+                parent_inames = iname_set_stack[-1] if iname_set_stack else set()
+                iname_set_stack.append(parent_inames | inames)
 
-        return result
+            return result
 
-    @memoize_method
+        return inner()
+
     def all_parents_per_domain(self) -> Sequence[Sequence[int]]:
         """Return a list corresponding to self.domains (by index)
         containing domain indices which are nested around this
@@ -398,26 +418,35 @@ class LoopKernel(Taggable):
         Each domains nest list walks from the leaves of the nesting
         tree to the root.
         """
-        result: list[list[int]] = []
+        # FIXME: Not sure if I'm allowed to memoize onto an arbitrary Sequence type?
+        @memoize_in(self.domains, "all_parents_per_domain")
+        def inner() -> Sequence[Sequence[int]]:
+            result: list[list[int]] = []
 
-        ppd = self.parents_per_domain()
-        for parent in ppd:
-            # keep walking up tree to find *all* parents
-            dom_result: list[int] = []
-            while parent is not None:
-                dom_result.insert(0, parent)
-                parent = ppd[parent]
+            ppd = self.parents_per_domain()
+            for parent in ppd:
+                # keep walking up tree to find *all* parents
+                dom_result: list[int] = []
+                while parent is not None:
+                    dom_result.insert(0, parent)
+                    parent = ppd[parent]
 
-            result.append(dom_result)
+                result.append(dom_result)
 
-        return result
+            return result
 
-    @memoize_method
+        return inner()
+
     def _get_home_domain_map(self) -> Mapping[str, int]:
-        return {
-                iname: i_domain
-                for i_domain, dom in enumerate(self.domains)
-                for iname in dom.space.dim_names(DimType.out)}
+        # FIXME: Not sure if I'm allowed to memoize onto an arbitrary Sequence type?
+        @memoize_in(self.domains, "home_domain_map")
+        def inner() -> Mapping[str, int]:
+            return {
+                    iname: i_domain
+                    for i_domain, dom in enumerate(self.domains)
+                    for iname in dom.space.dim_names(DimType.out)}
+
+        return inner()
 
     def get_home_domain_index(self, iname: str) -> int:
         return self._get_home_domain_map()[iname]
