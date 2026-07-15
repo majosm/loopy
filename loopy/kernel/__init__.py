@@ -106,13 +106,6 @@ class KernelState(IntEnum):
     LINEARIZED = 3
 
 
-def _get_inames_from_domains(
-            domains: Sequence[nisl.Set]
-        ) -> AbstractSet[InameStr]:
-    return fset_union(
-            frozenset(dom.space.dim_names(DimType.out)) for dom in domains)
-
-
 @dataclass(frozen=True)
 class _BoundsRecord:
     lower_bound_pw_aff: nisl.PwAff
@@ -181,6 +174,11 @@ class LoopKernel(Taggable):
     options: Options
     target: TargetBase
     tags: frozenset[Tag]
+
+    # Cached inames per domain (keyed by object ID)
+    _domain_inames: constantdict[int, frozenset[InameStr]] = field(
+        repr=False, compare=False)
+
     state: KernelState = KernelState.INITIAL
     name: str = "loopy_kernel"
 
@@ -231,6 +229,8 @@ class LoopKernel(Taggable):
 
         import islpy as isl
         assert self.assumptions._obj.get_ctx() == isl.DEFAULT_CONTEXT
+
+        assert len(self._domain_inames) == len(self.domains)
 
     # {{{ symbol mangling
 
@@ -1386,6 +1386,12 @@ class LoopKernel(Taggable):
 
         object.__setattr__(self, "_cache_manager", nisl.Cache())
 
+        # _domain_inames is keyed by object id, which is not preserved across
+        # pickling, so recompute it from the (just-restored) domains.
+        object.__setattr__(self, "_domain_inames", constantdict({
+            id(dom): frozenset(dom.space.dim_names(DimType.out))
+            for dom in self.domains}))
+
     # }}}
 
     # {{{ persistent hash key generation / comparison
@@ -1439,14 +1445,44 @@ class LoopKernel(Taggable):
     # }}}
 
     def get_copy_kwargs(self, **kwargs: Any) -> dict[str, Any]:
-        if "domains" in kwargs:
-            inames = kwargs.get("inames", self.inames)
-            domains = kwargs["domains"]
-            kwargs["inames"] = {name: inames.get(name, KernelIname(name, frozenset()))
-                                for name in _get_inames_from_domains(domains)}
+        all_inames: AbstractSet[InameStr]
 
-            import islpy as isl
-            assert all(dom._obj.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
+        domain_inames: constantdict[int, frozenset[InameStr]]
+        changed_domain_inames: bool
+
+        if "domains" in kwargs:
+            domains = kwargs["domains"]
+
+            def get_inames_from_domain(dom: nisl.Set) -> frozenset[InameStr]:
+                try:
+                    return self._domain_inames[id(dom)]
+                except KeyError:
+                    import islpy as isl
+                    assert dom._obj.get_ctx() == isl.DEFAULT_CONTEXT
+                    return frozenset(dom.space.dim_names(DimType.out))
+
+            domain_inames = constantdict({
+                id(dom): get_inames_from_domain(dom)
+                for dom in domains})
+
+            changed_domain_inames = (
+                domain_inames.keys() != self._domain_inames.keys())
+
+            kwargs["_domain_inames"] = domain_inames
+
+        else:
+            domain_inames = self._domain_inames
+            changed_domain_inames = False
+
+        if changed_domain_inames or "inames" in kwargs:
+            all_inames = fset_union(domain_inames.values())
+
+            inames = kwargs.get("inames", self.inames)
+
+            if inames.keys() != all_inames:
+                kwargs["inames"] = {
+                    name: inames.get(name, KernelIname(name, frozenset()))
+                    for name in all_inames}
 
         return kwargs
 

@@ -41,6 +41,7 @@ from typing_extensions import override
 
 import islpy as isl
 import namedisl as nisl
+from namedisl import DimType
 from pymbolic.mapper import CSECachingMapperMixin
 from pymbolic.primitives import (
     Call,
@@ -2512,10 +2513,15 @@ def make_function(
 
     # }}}
 
-    from loopy.kernel import _get_inames_from_domains
     from loopy.kernel.data import Iname
+
+    domain_inames: dict[int, frozenset[InameStr]] = {
+        id(dom): frozenset(dom.space.dim_names(DimType.out))
+        for dom in parsed_domains}
+
+    from pytools import fset_union
     inames = {name: Iname(name, frozenset())
-              for name in _get_inames_from_domains(parsed_domains)}
+              for name in fset_union(domain_inames.values())}
 
     substitutions = constantdict(substitutions)
     for sname, rule in inline_substitutions.items():
@@ -2563,6 +2569,7 @@ def make_function(
             name=name,
             iname_slab_increments=constantdict(iname_slab_increments),
             applied_iname_rewrites=applied_iname_rewrites,
+            _domain_inames=constantdict(domain_inames),
             )
 
     from loopy.transform.instruction import uniquify_instruction_ids

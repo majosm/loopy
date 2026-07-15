@@ -243,9 +243,14 @@ def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
 
     # }}}
 
+    domain_inames = constantdict({
+        id(dom): frozenset(dom.space.dim_names(DimType.out))
+        for dom in new_domains})
+
     from loopy.kernel import LoopKernel
     return LoopKernel(
             domains=new_domains,
+            _domain_inames=domain_inames,
             instructions=new_instructions,
             args=new_args,
             name=f"{kernela.name}_and_{kernelb.name}",
