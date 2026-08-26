@@ -978,9 +978,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                    # at runtime, not here.
                    "argument count of the kernel ({_lpy_knl.num_args}).'"),
             Line(),
+            Assign("_lpy_t0", "_lpy_time.time()"),
             value_arg_code,
             array_arg_code,
             overflow_args_code,
+            Assign("_lpy_t_args", "_lpy_time.time()"),
             Assign("_lpy_evt",
                    f"{self.target.pyopencl_module_name}.enqueue_nd_range_kernel("
                    "queue, _lpy_knl, "
@@ -992,7 +994,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                    "True, "  # g_times_l
                    "True, "  # allow_empty_ndrange
                    ")"),
-            Assign("wait_for", "[_lpy_evt]"),
+            Assign("_lpy_t_enqueue", "_lpy_time.time()"),
+            Line("queue.finish()"),
+            Assign("wait_for", "None"),
+            Assign("_lpy_t_finish", "_lpy_time.time()"),
+            Line(f"print(f'{subkernel_name} [args={cl_arg_count}]: "
+                 "setup {(_lpy_t_args-_lpy_t0)*1e6:.2f} us, "
+                 "enqueue {(_lpy_t_enqueue-_lpy_t_args)*1e6:.2f} us, "
+                 "finish {(_lpy_t_finish-_lpy_t_enqueue)*1e6:.2f} us')"),
             Line(),
             Comment("}}}"),
             Line(),
